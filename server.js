@@ -306,7 +306,7 @@ app.post('/api/chat', async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: `You are a helpful assistant analyzing oral history interviews. Follow these rules strictly: 
+                    content: `You are a helpful assistant analyzing oral history interviews. Respond warmly to greetings or friendly messages (e.g., "hi," "hello," "how are you?"). Follow these rules strictly: 
 
 CRITICAL RULES:
 - Give complete answers but be extremely concise
@@ -375,7 +375,7 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is running on ${PORT}`);
     console.log('Press Ctrl+C to stop the server');
 });
 
