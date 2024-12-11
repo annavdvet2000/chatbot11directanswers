@@ -89,18 +89,34 @@ class AISearchEngine {
         return matches;
     }
 
-    async findRelevantContext(question) {
+    async findRelevantContext(question, history = []) {
         try {
-            const isComparative = question.toLowerCase().includes('between') || 
-                                question.toLowerCase().includes('compare');
+            // Get the last few exchanges to understand context
+            const recentHistory = history.slice(-4);
+            let contextualQuery = question;
+
+            // If this seems like a follow-up, incorporate previous context
+            if (question.length < 60 || 
+                question.toLowerCase().startsWith('why') || 
+                question.toLowerCase().startsWith('how') || 
+                !question.includes('?')) {
+                
+                const previousExchanges = recentHistory
+                    .map(msg => msg.content)
+                    .join(' ');
+                contextualQuery = `${previousExchanges} ${question}`;
+            }
+
+            const isComparative = contextualQuery.toLowerCase().includes('between') || 
+                                contextualQuery.toLowerCase().includes('compare');
             
-            const names = this.findAllNamesInQuestion(question);
+            const names = this.findAllNamesInQuestion(contextualQuery);
             
             if ((isComparative || names.length > 1) && names.length >= 2) {
                 const contexts = [];
                 for (const match of names) {
                     const documentName = `document${match.id}.pdf`;
-                    const questionEmbedding = await this.getEmbedding(question);
+                    const questionEmbedding = await this.getEmbedding(contextualQuery);
                     const similarContent = await this.findSimilarContent(questionEmbedding, documentName);
                     
                     if (similarContent.length > 0) {
@@ -130,7 +146,7 @@ class AISearchEngine {
                 console.log(`Found match for person: ${record.name} (ID: ${id})`);
                 
                 const documentName = `document${id}.pdf`;
-                const questionEmbedding = await this.getEmbedding(question);
+                const questionEmbedding = await this.getEmbedding(contextualQuery);
                 const similarContent = await this.findSimilarContent(questionEmbedding, documentName);
                 
                 if (similarContent.length > 0) {
@@ -140,7 +156,7 @@ class AISearchEngine {
                 }
             }
 
-            const questionEmbedding = await this.getEmbedding(question);
+            const questionEmbedding = await this.getEmbedding(contextualQuery);
             const similarContent = await this.findSimilarContent(questionEmbedding, null);
             
             const groupedResults = {};
@@ -264,7 +280,7 @@ app.post('/api/chat', async (req, res) => {
         }
 
         let sessionHistory = sessions.get(sessionId) || [];
-        const relevantContext = await searchEngine.findRelevantContext(question);
+        const relevantContext = await searchEngine.findRelevantContext(question, sessionHistory);
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4-turbo-preview",
@@ -282,6 +298,13 @@ CRITICAL RULES:
 - If you can't find relevant information, say "I don't find information about this in the interviews"
 - For comparative questions, cite both interviews before making any comparison
 - If asked 'why', always point back to specific interviews and pages
+
+HANDLING FOLLOW-UP QUESTIONS:
+- Review previous exchanges to understand the context
+- For "why" questions, refer back to the specific evidence from previously cited interviews
+- If a follow-up question is unclear, ask for clarification about which aspect they want to know more about
+- Always maintain continuity with previous responses
+- If the follow-up requires new information not covered in previous responses, search for and cite new relevant passages
 
 Example good response:
 "From Interview #4 with Jean Carlomusto, page 12: She primarily worked on AIDS education videos at GMHC."
@@ -306,6 +329,7 @@ Only use information from the provided context. Here is the relevant context:\n\
         let response = completion.choices[0].message.content;
         response = ensureCompleteResponse(response);
 
+        // Store complete history without truncation
         sessionHistory = [
             ...sessionHistory,
             { role: "user", content: question },
