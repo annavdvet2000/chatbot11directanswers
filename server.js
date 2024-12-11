@@ -1,9 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const corsOptions = {
-	origin: 'https://chatbot11directanswers.netlify.app',
-	methods: ['GET', 'POST'],
-	credentials: true
+    origin: 'https://chatbot11directanswers.netlify.app',
+    methods: ['GET', 'POST'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 };
 const dotenv = require('dotenv');
 const OpenAI = require('openai');
@@ -63,85 +66,83 @@ class AISearchEngine {
         }
     }
 
-    findPersonByName(question) {
+    findAllNamesInQuestion(question) {
         const normalizedQuestion = question.toLowerCase();
+        const matches = [];
         
-        // Iterate through metadata to find name matches
         for (const [id, record] of this.metadata.entries()) {
             const normalizedName = record.name.toLowerCase();
             
-            // Check if the name appears in the question
             if (normalizedQuestion.includes(normalizedName)) {
-                return { id, record };
+                matches.push({ id, record });
+                continue;
             }
             
-            // Handle possible name variations
             const nameParts = normalizedName.split(' ');
             for (const part of nameParts) {
-                if (part.length > 2 && normalizedQuestion.includes(part)) {
-                    return { id, record };
+                if (part.length > 2 && normalizedQuestion.includes(part.toLowerCase())) {
+                    matches.push({ id, record });
+                    break;
                 }
             }
         }
-        return null;
+        return matches;
     }
 
     async findRelevantContext(question) {
         try {
-            // First check if the question is asking about a specific person
-            const nameMatch = this.findPersonByName(question);
+            const isComparative = question.toLowerCase().includes('between') || 
+                                question.toLowerCase().includes('compare');
+            
+            const names = this.findAllNamesInQuestion(question);
+            
+            if ((isComparative || names.length > 1) && names.length >= 2) {
+                const contexts = [];
+                for (const match of names) {
+                    const documentName = `document${match.id}.pdf`;
+                    const questionEmbedding = await this.getEmbedding(question);
+                    const similarContent = await this.findSimilarContent(questionEmbedding, documentName);
+                    
+                    if (similarContent.length > 0) {
+                        contexts.push({
+                            interviewId: match.id,
+                            interviewee: match.record.name,
+                            date: match.record.date,
+                            content: similarContent.map(item => ({
+                                text: item.text,
+                                page: item.metadata.page,
+                                score: item.score
+                            }))
+                        });
+                    }
+                }
+                
+                return contexts.map(context => 
+                    `Interview ${context.interviewId} with ${context.interviewee} (${context.date}):\n${
+                        context.content.map(c => `[Page ${c.page}] ${c.text}`).join('\n\n')
+                    }`
+                ).join('\n\n---\n\n');
+            }
+            
+            const nameMatch = names[0];
             if (nameMatch) {
                 const { id, record } = nameMatch;
                 console.log(`Found match for person: ${record.name} (ID: ${id})`);
                 
                 const documentName = `document${id}.pdf`;
                 const questionEmbedding = await this.getEmbedding(question);
-                
-                // Find similar content from this document
                 const similarContent = await this.findSimilarContent(questionEmbedding, documentName);
                 
                 if (similarContent.length > 0) {
-                    console.log(`Found ${similarContent.length} relevant chunks for document: ${documentName}`);
-                    const relevantText = similarContent
-                        .map(item => item.text)
-                        .join('\n\n');
-                    return `Interview ${id} with ${record.name} (${record.date}): ${relevantText}`;
+                    return similarContent.map(item => 
+                        `Interview ${id} with ${record.name} (${record.date}):\n[Page ${item.metadata.page}] ${item.text}`
+                    ).join('\n\n');
                 }
             }
 
-            // Check for explicit interview number mentions
-            const interviewMatch = question.match(/interview (?:number )?(\d+)/i);
-            if (interviewMatch) {
-                const interviewNum = interviewMatch[1];
-                const record = this.metadata.get(interviewNum);
-                
-                if (record) {
-                    const documentName = `document${interviewNum}.pdf`;
-                    const questionEmbedding = await this.getEmbedding(question);
-                    const similarContent = await this.findSimilarContent(questionEmbedding, documentName);
-                    
-                    if (similarContent.length > 0) {
-                        const relevantText = similarContent
-                            .map(item => item.text)
-                            .join('\n\n');
-                        return `Interview ${interviewNum} with ${record.name} (${record.date}): ${relevantText}`;
-                    }
-                }
-            }
-
-            // Check for metadata-specific queries
-            const metadataPattern = /(?:who|what|when|where|which|how|tell me about)\s+.*?(name|date|title|tags|interview)/i;
-            const isMetadataQuery = metadataPattern.test(question);
-            if (isMetadataQuery) {
-                const metadataContext = this.searchMetadata(question);
-                if (metadataContext) return metadataContext;
-            }
-
-            // Default to similarity search with grouping by document
             const questionEmbedding = await this.getEmbedding(question);
             const similarContent = await this.findSimilarContent(questionEmbedding, null);
             
-            // Group results by source document
             const groupedResults = {};
             similarContent.forEach(item => {
                 const source = item.metadata.source;
@@ -151,81 +152,40 @@ class AISearchEngine {
                 groupedResults[source].push(item);
             });
 
-            // Use the document with the most matches
-            const bestSource = Object.entries(groupedResults)
-                .sort((a, b) => b[1].length - a[1].length)[0];
+            if (Object.keys(groupedResults).length > 0) {
+                const bestSource = Object.entries(groupedResults)
+                    .sort((a, b) => b[1].length - a[1].length)[0];
                 
-            const relevantChunks = bestSource[1];
-            return relevantChunks.map(item => item.text).join('\n\n');
+                const documentId = bestSource[0].match(/document(\d+)\.pdf/)[1];
+                const record = this.metadata.get(documentId);
+                
+                const relevantChunks = bestSource[1];
+                return relevantChunks.map(item => 
+                    `Interview ${documentId} with ${record.name} (${record.date}):\n[Page ${item.metadata.page}] ${item.text}`
+                ).join('\n\n');
+            }
 
+            return null;
         } catch (error) {
             console.error('Error finding relevant context:', error);
             throw error;
         }
     }
 
-    searchMetadata(question) {
-        const q = question.toLowerCase();
-        let searchTerms = [];
-        
-        if (q.includes('interview') || q.includes('interviewed')) {
-            searchTerms.push('date');
-        }
-        if (q.includes('name') || q.includes('who')) {
-            searchTerms.push('name');
-        }
-        if (q.includes('title') || q.includes('about what')) {
-            searchTerms.push('excerpt_title');
-        }
-        if (q.includes('tags') || q.includes('topics')) {
-            searchTerms.push('tags');
-        }
-        let results = [];
-        
-        Array.from(this.metadata.entries()).forEach(([id, record]) => {
-            let matched = false;
-            if (searchTerms.length > 0) {
-                for (let term of searchTerms) {
-                    if (record[term] && record[term].toLowerCase().includes(q)) {
-                        matched = true;
-                        break;
-                    }
-                }
-            } else {
-                const allText = `${record.name} ${record.date} ${record.excerpt_title} ${record.tags}`.toLowerCase();
-                matched = allText.includes(q);
-            }
-            
-            if (matched) {
-                results.push(`Interview ${id}: ${record.name}, interviewed on ${record.date}. Title: "${record.excerpt_title}". Topics: ${record.tags}`);
-            }
-        });
-        return results.length > 0 ? results.join('\n\n') : null;
-    }
-
-    async getEmbedding(text) {
-        const response = await this.openai.embeddings.create({
-            model: "text-embedding-3-small",
-            input: text,
-        });
-        return response.data[0].embedding;
-    }
-
     async findSimilarContent(queryEmbedding, sourceName = null) {
-        // Calculate similarities for all embeddings
         const similarities = this.embeddings.map((emb, idx) => ({
             score: this.cosineSimilarity(queryEmbedding, emb),
             text: this.texts[idx],
             metadata: this.chunkMetadata[idx]
         }));
 
-        // If sourceName is provided, filter for only that document
         let results = similarities;
         if (sourceName) {
-            results = similarities.filter(item => item.metadata.source === sourceName);
+            results = similarities.filter(item => 
+                item.metadata && item.metadata.source === sourceName
+            );
         }
 
-        // Sort by similarity score and take top 5
         return results
             .sort((a, b) => b.score - a.score)
             .slice(0, 5);
@@ -237,21 +197,24 @@ class AISearchEngine {
         const normB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
         return dotProduct / (normA * normB);
     }
+
+    async getEmbedding(text) {
+        const response = await this.openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: text,
+        });
+        return response.data[0].embedding;
+    }
 }
 
 function ensureCompleteResponse(text) {
-    // Remove any trailing ellipsis
     text = text.replace(/\.{3,}$/, '');
-    
-    // Define sentence ending punctuation
     const sentenceEndings = ['.', '!', '?'];
     
-    // If the text already ends with proper punctuation, return it
     if (sentenceEndings.some(ending => text.endsWith(ending))) {
         return text;
     }
 
-    // Find the last complete sentence
     let lastCompleteIndex = -1;
     for (const ending of sentenceEndings) {
         const index = text.lastIndexOf(ending);
@@ -260,11 +223,9 @@ function ensureCompleteResponse(text) {
         }
     }
 
-    // If we found a complete sentence, trim to that point
     if (lastCompleteIndex !== -1) {
         text = text.substring(0, lastCompleteIndex + 1);
     } else {
-        // If no complete sentence is found, append a period if the text isn't empty
         if (text.trim().length > 0) {
             text = text.trim() + '.';
         }
@@ -286,8 +247,12 @@ searchEngine.initialize().catch(console.error);
 
 const sessions = new Map();
 
-app.get('/api/test', (req, res) => {
-    res.json({ message: 'Server is running!' });
+app.get('/', (req, res) => {
+    res.json({ message: 'API is running' });
+});
+
+app.get('/api/chat', (req, res) => {
+    res.json({ message: 'Please use POST method for chat requests' });
 });
 
 app.post('/api/chat', async (req, res) => {
@@ -309,22 +274,22 @@ app.post('/api/chat', async (req, res) => {
                     content: `You are a helpful assistant analyzing oral history interviews. Respond warmly to greetings or friendly messages (e.g., "hi," "hello," "how are you?"). Follow these rules strictly: 
 
 CRITICAL RULES:
-- Give complete answers but be extremely concise
-- Focus only on answering exactly what was asked
-- Skip any background or additional context
-- Use simple, direct language
-- Stop once you've answered the core question
-- Don't try to cover everything from the interview
+- ALWAYS start your response by citing the specific interview(s) and page number(s) you're drawing from
+- Use this format for citations: "From Interview #[X] with [Name], page [Y]:"
+- For multiple sources: "From Interview #[X] with [Name], page [Y] and Interview #[Z] with [Name], page [W]:"
+- After the citation, provide your concise answer
+- Never make claims without citing specific interviews and pages
+- If you can't find relevant information, say "I don't find information about this in the interviews"
+- For comparative questions, cite both interviews before making any comparison
+- If asked 'why', always point back to specific interviews and pages
 
 Example good response:
-"Jean Carlomusto primarily worked on AIDS education videos at GMHC and later stepped back from activism in 1993 due to burnout."
+"From Interview #4 with Jean Carlomusto, page 12: She primarily worked on AIDS education videos at GMHC."
 
 Example bad response:
-"In her December 2002 interview, Jean Carlomusto discussed her extensive work in AIDS activism. Over the years, she was involved in various projects..."
+"Jean Carlomusto worked on AIDS education videos at GMHC." (missing citation)
 
-Only use information from the provided context. If the answer isn't in the context, say "I don't find that information in the interview."
-
-Here is the relevant context:\n\n${relevantContext}`
+Only use information from the provided context. Here is the relevant context:\n\n${relevantContext}`
                 },
                 ...sessionHistory,
                 {
@@ -339,8 +304,6 @@ Here is the relevant context:\n\n${relevantContext}`
         });
 
         let response = completion.choices[0].message.content;
-        
-        // Post-process the response to ensure complete sentences
         response = ensureCompleteResponse(response);
 
         sessionHistory = [
@@ -371,6 +334,14 @@ Here is the relevant context:\n\n${relevantContext}`
 
 app.use((req, res) => {
     res.status(404).json({ error: 'Route not found' });
+});
+
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ 
+        error: 'Something broke!',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
 });
 
 const PORT = process.env.PORT || 3000;
