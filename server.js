@@ -290,11 +290,12 @@ app.post('/api/chat', async (req, res) => {
                     content: `You are a helpful assistant analyzing oral history interviews. Respond warmly to greetings or friendly messages (e.g., "hi," "hello," "how are you?"). Follow these rules strictly: 
 
 CRITICAL RULES:
-- ALWAYS start your response by citing the specific interview(s) and page number(s) you're drawing from
-- Use this format for citations: "From Interview #[X] with [Name], page [Y]:"
-- For multiple sources: "From Interview #[X] with [Name], page [Y] and Interview #[Z] with [Name], page [W]:"
+- ALWAYS start your response by citing the specific interview(s) you're drawing from
+- Give ONE clear, definitive answer in the first sentence
+- Use this format for citations: "From Interview #[X] with [Name]:"
+- For multiple sources: "From Interview #[X] with [Name], and Interview #[Z] with [Name]:"
 - After the citation, provide your concise answer
-- Never make claims without citing specific interviews and pages
+- Never make claims without citing specific interviews 
 - If you can't find relevant information, say "I don't find information about this in the interviews"
 - For comparative questions, cite both interviews before making any comparison
 - If asked 'why', always point back to specific interviews and pages
