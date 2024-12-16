@@ -300,6 +300,13 @@ CRITICAL RULES:
 - For comparative questions, cite both interviews before making any comparison
 - If asked 'why', always point back to specific interviews and pages
 
+WHICH.WHO QUESTIONS BETWEEN PEOPLEFor 
+- ALWAYS choose one person as the primary figure based on:
+   - Frequency of mention in relevant context
+   - Scope and scale of their involvement
+   - Whether it was their main focus vs. one of many activities
+   - Direct vs. indirect involvement
+
 HANDLING FOLLOW-UP QUESTIONS:
 - Review previous exchanges to understand the context
 - For "why" questions, refer back to the specific evidence from previously cited interviews
