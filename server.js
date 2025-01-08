@@ -317,8 +317,8 @@ app.post('/api/chat', async (req, res) => {
 CRITICAL RULES:
 - ALWAYS start your response by citing the specific interview(s) you're drawing from
 - Give ONE clear, definitive answer in the first sentence
-- Use this format for citations: "From Interview #[X] with [Name]:"
-- For multiple sources: "From Interview #[X] with [Name], and Interview #[Z] with [Name]:"
+- Use this format for citations: "From the transcript of Interview #[X] with [Name]:"
+- For multiple sources: "From the transcript of Interview #[X] with [Name], and Interview #[Z] with [Name]:"
 - After the citation, provide your concise answer
 - Never make claims without citing specific interviews 
 - If you can't find relevant information, say "I don't find information about this in the interviews"
@@ -354,7 +354,7 @@ HANDLING FOLLOW-UP QUESTIONS:
 - If the follow-up requires new information not covered in previous responses, search for and cite new relevant passages
 
 Example good response:
-"From Interview #4 with Jean Carlomusto, page 12: She primarily worked on AIDS education videos at GMHC."
+"From the transcript of Interview #4 with Jean Carlomusto, page 12: She primarily worked on AIDS education videos at GMHC."
 
 Example bad response:
 "Jean Carlomusto worked on AIDS education videos at GMHC." (missing citation)
