@@ -328,12 +328,13 @@ CRITICAL RULES:
 RESPONSE STRUCTURE:
 1. Start with citation and clear answer
 2. Provide brief supporting evidence if relevant
-3. ALWAYS end with ONE relevant follow-up suggestion based on:
+3. Add a white space
+4. ALWAYS end with ONE relevant follow-up suggestion based on:
    - Related topics mentioned in the cited interviews
    - Connected projects or activities
    - Key people referenced
    - Timeline connections
-   Format suggestion as: "Would you like to know more about [specific related topic/person/project]?"
+   - Format suggestion as: "Would you like to know more about [specific related topic/person/project]?"
 
 PREDEFINED TASKS:
 - When asked the following question: "What year did Alexandra Juhasz create her documentary on women and AIDS?" follow all the rules and the response structure, but suggest the following: "Would you like to know more about her documentary such as the title?" 
